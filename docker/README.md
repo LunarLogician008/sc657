@@ -2,6 +2,41 @@
 
 Docker-based development environment for ROS 2 Humble with Gazebo Classic 11 and TurtleBot3, optimized for **Asahi Ubuntu 24.04 on Apple Silicon (ARM64)**.
 
+## ⚠️ Build Time Warning - ARM64 Users
+
+**IMPORTANT:** The first Docker build on ARM64 systems will take **30-60 minutes** (or longer on systems with less than 4 CPU cores) because:
+
+- **Gazebo Classic 11** is built from source (x86_64 binaries not available on ARM64)
+- **gazebo_ros_pkgs** is built from source
+- **turtlebot3_simulations** is built from source
+
+**After the first build:**
+- The Docker image is cached
+- Subsequent runs start instantly (seconds)
+- No rebuild needed unless you modify the Dockerfile
+
+**Memory Requirements:**
+- Minimum: 4GB RAM
+- Recommended: 8GB+ RAM for faster builds
+- Set Docker memory limit to at least 8GB if using Docker Desktop
+
+**Progress Indicators:**
+During the build, you'll see stages like:
+1. Installing system dependencies (5-10 min)
+2. Building Gazebo Classic 11 from source (20-40 min) ⏳
+3. Building gazebo_ros_pkgs (5-10 min)
+4. Building turtlebot3_simulations (2-5 min)
+
+**Why Source Builds?**
+On ARM64 (Apple Silicon), these packages don't have pre-built binaries:
+- ❌ `ros-humble-gazebo-ros-pkgs`
+- ❌ `ros-humble-gazebo-ros`
+- ❌ `gazebo` (OSRF x86_64 only)
+- ❌ `ros-humble-turtlebot3-gazebo`
+- ❌ `ros-humble-turtlebot3-simulations`
+
+All gazebo-related packages are built from source automatically during the Docker build.
+
 ## Features
 
 - **ROS 2 Humble** (native ARM64 support, no emulation)
@@ -21,16 +56,39 @@ Docker-based development environment for ROS 2 Humble with Gazebo Classic 11 and
 
 ## Quick Start
 
+### First-Time Build (ARM64 Users - Allow 30-60 Minutes)
+
 ```bash
 cd docker
 chmod +x run.sh
+
+# First build - This will take 30-60 minutes on ARM64
+# Go grab a coffee ☕ while Gazebo builds from source
+./run.sh
+```
+
+**What happens during first build:**
+1. ✅ Installing system packages (5-10 min)
+2. ⏳ Building Gazebo Classic 11 from source (20-40 min) - **longest step**
+3. ✅ Building gazebo_ros_pkgs (5-10 min)
+4. ✅ Building turtlebot3_simulations (2-5 min)
+5. ✅ Setting up user environment (1 min)
+
+**After the first build:**
+- Starting the container takes only seconds
+- No rebuild needed unless you modify the Dockerfile
+
+### Subsequent Runs (Instant)
+
+Once the image is built:
+```bash
+cd docker
 ./run.sh
 ```
 
 This will:
-1. Build the Docker image (first time only, may take 10-15 minutes)
-2. Set up X11 access for GUI applications
-3. Start the container with an interactive bash shell
+1. Set up X11 access for GUI applications
+2. Start the container with an interactive bash shell (instant)
 
 ## Opening Additional Terminals
 
@@ -222,6 +280,53 @@ To visualize inflation in RViz2:
 
 ## Asahi-Specific Troubleshooting
 
+### ARM64 Build Issues
+
+**Problem:** Docker build fails during Gazebo compilation or dependency installation.
+
+**Solutions:**
+
+1. **Increase Docker memory limit:**
+   - Docker Desktop: Settings → Resources → Memory → Set to 8GB+
+   - Native Docker: Check available memory with `free -h`
+
+2. **Build timeout or out-of-memory errors:**
+   ```bash
+   # Reduce parallel build jobs
+   # Edit Dockerfile, change: make -j$(nproc)
+   # To: make -j2  (or -j1 for very limited systems)
+   ```
+
+3. **SDFormat/Ignition library failures:**
+   If `libsdformat12-dev` or Ignition libraries fail to install, they may need source builds too.
+   
+   The Dockerfile attempts to install them via apt with `|| true` fallback.
+   
+   If build still fails, you may need to manually build missing dependencies:
+   ```dockerfile
+   # Add before Gazebo build in Dockerfile:
+   RUN git clone --depth 1 --branch sdf12 https://github.com/gazebosim/sdformat.git /tmp/sdformat && \
+       cd /tmp/sdformat && mkdir build && cd build && \
+       cmake .. -DCMAKE_INSTALL_PREFIX=/usr && \
+       make -j$(nproc) && make install && ldconfig && \
+       rm -rf /tmp/sdformat
+   ```
+
+4. **Check build logs:**
+   ```bash
+   # Save full build log to file
+   docker compose build --no-cache 2>&1 | tee docker_build.log
+   
+   # Search for specific errors
+   grep -i "error:" docker_build.log
+   ```
+
+5. **Verify base image supports ARM64:**
+   ```bash
+   docker run --rm ros:humble uname -m
+   # Should output: aarch64
+   ```
+
 ### Software Rendering Fallback
 
 The Asahi GPU drivers may not fully support hardware acceleration inside Docker containers.
@@ -283,11 +388,30 @@ Edit Gazebo settings (`~/.gazebo/gui.ini`) or launch with minimal rendering.
 
 ### ARM64 Package Availability
 
-Most ROS 2 Humble packages have native ARM64 builds. If you encounter a missing package:
+Most ROS 2 Humble packages have native ARM64 builds. However, Gazebo-related packages do not:
 
-1. **Search for ARM64 availability:**
+**Available on ARM64 (installed via apt):**
+- ✅ `ros-humble-turtlebot3` (non-simulation parts)
+- ✅ `ros-humble-turtlebot3-msgs`
+- ✅ `ros-humble-turtlebot3-teleop`
+- ✅ `ros-humble-turtlebot3-navigation2`
+- ✅ `ros-humble-navigation2`, `ros-humble-nav2-*`
+- ✅ `ros-humble-slam-toolbox`, `ros-humble-cartographer*`
+- ✅ `ros-humble-rviz2`
+
+**NOT Available on ARM64 (built from source in this Dockerfile):**
+- ❌ `ros-humble-gazebo-ros-pkgs` → Built from source in `/opt/gazebo_ros_ws`
+- ❌ `ros-humble-gazebo-ros` → Built from source in `/opt/gazebo_ros_ws`
+- ❌ `gazebo` (Gazebo Classic 11) → Built from source, installed to `/usr`
+- ❌ `ros-humble-turtlebot3-gazebo` → Built from source in `/opt/tb3_sim_ws`
+- ❌ `ros-humble-turtlebot3-simulations` → Built from source in `/opt/tb3_sim_ws`
+
+**If you need additional packages:**
+
+1. **Check ARM64 availability:**
    ```bash
    apt-cache search ros-humble-<package-name>
+   apt-cache policy ros-humble-<package-name>
    ```
 
 2. **Build from source if needed:**
@@ -299,20 +423,47 @@ Most ROS 2 Humble packages have native ARM64 builds. If you encounter a missing 
    source install/setup.bash
    ```
 
+3. **Verify package architecture:**
+   ```bash
+   dpkg --print-architecture
+   # Should show: arm64
+   ```
+
 ### GPU Device Access
 
-The `docker-compose.yml` mounts `/dev/dri` for GPU access. On Asahi, GPU support is still evolving.
+The Docker container uses **software rendering** by default (`LIBGL_ALWAYS_SOFTWARE=1`) for maximum compatibility.
 
-If you get permission errors:
-```bash
-sudo chmod 666 /dev/dri/renderD128
-```
+**Why software rendering?**
+- Asahi GPU drivers are still evolving
+- Hardware acceleration in Docker containers on ARM64 can be unreliable
+- Software rendering (Mesa LLVMpipe) ensures Gazebo and RViz2 work consistently
 
-Or add your user to the `render` group:
-```bash
-sudo usermod -aG render $USER
-```
-Then log out and back in.
+**Performance impact:**
+- Gazebo GUI may be slower than with hardware acceleration
+- RViz2 works well with software rendering
+- For better performance, consider running Gazebo headless (gzserver only)
+
+**If you want to try hardware acceleration:**
+
+1. **Uncomment GPU device mount in `docker-compose.yml`:**
+   ```yaml
+   volumes:
+     - /dev/dri:/dev/dri  # Add this line
+   
+   devices:
+     - /dev/dri:/dev/dri  # Add this line
+   ```
+
+2. **Remove software rendering flag:**
+   Comment out `LIBGL_ALWAYS_SOFTWARE=1` in environment variables
+
+3. **Fix permissions if needed:**
+   ```bash
+   sudo chmod 666 /dev/dri/renderD128
+   # Or add user to render group:
+   sudo usermod -aG render $USER
+   # Then log out and back in
+   ```
 
 ---
 
