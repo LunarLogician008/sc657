@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  ros2_humble:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ros2-humble-turtlebot3:latest
+    container_name: ros2_humble_turtlebot3
+    
+    # Host networking for ROS 2 DDS topic discovery
+    network_mode: host
+    
+    # X11 GUI passthrough
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+      - TURTLEBOT3_MODEL=burger
+      - LIBGL_ALWAYS_SOFTWARE=1
+      - GAZEBO_MODEL_PATH=/opt/ros/humble/share/turtlebot3_gazebo/models
+    
+    volumes:
+      # X11 socket for GUI applications
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # GPU device access (if available on Asahi)
+      - /dev/dri:/dev/dri
+      # Mount workspace directory
+      - ./workspace:/home/rosuser/ros2_ws/src/assignment:rw
+    
+    # Allow access to display and GPU devices
+    devices:
+      - /dev/dri:/dev/dri
+    
+    # Required for GUI applications
+    privileged: false
+    
+    stdin_open: true
+    tty: true
+    
+    command: bash
