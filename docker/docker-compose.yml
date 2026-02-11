@@ -17,19 +17,13 @@ services:
       - QT_X11_NO_MITSHM=1
       - TURTLEBOT3_MODEL=burger
       - LIBGL_ALWAYS_SOFTWARE=1
-      - GAZEBO_MODEL_PATH=/opt/ros/humble/share/turtlebot3_gazebo/models
+      - GAZEBO_MODEL_PATH=/opt/ros/humble/share/turtlebot3_gazebo/models:/opt/tb3_sim_ws/install/turtlebot3_gazebo/share/turtlebot3_gazebo/models
     
     volumes:
       # X11 socket for GUI applications
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
-      # GPU device access (if available on Asahi)
-      - /dev/dri:/dev/dri
       # Mount workspace directory
       - ./workspace:/home/rosuser/ros2_ws/src/assignment:rw
-    
-    # Allow access to display and GPU devices
-    devices:
-      - /dev/dri:/dev/dri
     
     # Required for GUI applications
     privileged: false
